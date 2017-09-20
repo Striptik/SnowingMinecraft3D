@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title> Snowing Minecraft </title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <style>
+        body {
+            color: #61443e;
+            font-family: Monospace;
+            font-size: 13px;
+            text-align: center;
+
+            background-color: #bfd1e5;
+            margin: 0px;
+            overflow: hidden;
+        }
+        a {
+
+            color: #a06851;
+        }
+        #oldie a {
+            color: #fff
+        }
+
+    </style>
+</head>
+<body>
+
+<div id='interface'>
+    <label for="MaxNumber">Nombre de boxes :</label>
+    <input type="number"  name="quantity" min="20" max="1000" value="250" id='MaxNumber'>
+    <label for="gravity">Gravité :</label>
+    <input type="number"  name="gravity" min="-100" max="100" value="-10" id='gravity' onChange=gravity()>
+    <input type="submit" onClick=oimoPopulate()>
+</div>
+
+<div id="container"><br/><br/><br/><br/><br/>Generating world...</div>
+
+
+<script src="js/three.js"></script>
+<script src="js/OrbitControls.js"></script>
+<script src="js/FirstPersonControls.js"></script>
+<script src="js/ImprovedNoise.js" ></script>
+<script src="js/oimo.min.js"></script>
+
+<script>
+
+    // Three
+    let container, camera, controls, scene, renderer,
+        antialias = true,
+        materialType = 'MeshPhongMaterial',
+        meshs = [],
+        //grounds = [],
+        matBox, matSphere,
+        buffgeoSphere, buffgeoBox,
+        ray,
+        clock = new THREE.Clock(),
+
+        toRad = Math.PI / 180,
+        toDeg = 180 / Math.PI,
+        worldWidth = 64,
+        worldDepth = 64,
+        backgroundColor = 0xbfd1e5,
+        worldHalfWidth = worldWidth / 2,
+        worldHalfDepth = worldDepth / 2,
+        xMax = null,
+        xMin = null,
+        yMax = null,
+        yMin = null,
+        zMax = null,
+        zMin = null,
+        data = generateHeight(worldWidth, worldDepth),
+
+        //OIMO
+        worldGrav = new OIMO.World({
+//            timestep: 1 / 60,
+//            iterations: 8,
+//            broadphase: 1, // 1 brute force, 2 sweep and prune, 3 volume tree
+            worldscale: 100, //100
+            //random: true,  // randomize sample
+            //info: true,   // calculate statistic or not
+            gravity: [0, -9.8, 0]
+        }),
+        bodys = null,
+        type = 1,
+        gp1 = 1 << 0,
+        gp2 = 1 << 1,
+        gp3 = 1 << 2,
+        all = 0xffffff,
+        // Is all the physics setting for rigidbody
+        config = [
+            1, // The density of the shape.
+            0.4, // The coefficient of friction of the shape.
+            0.2, // The coefficient of restitution of the shape.
+            1, // The bits of the collision groups to which the shape belongs.
+            all // The bits of the collision groups with which the shape collides.
+        ]
+
+
+    // Oimos Helper
+    let clearMesh = () => {
+        var i = meshs.length
+        while (i--) scene.remove(meshs[i])
+        meshs = []
+    }
+
+    let oimoPopulate = () => {
+        let max = document.getElementById("MaxNumber").value
+        type = 3
+
+        // reset
+        clearMesh()
+        worldGrav.clear()
+        bodys = []
+
+        // create sphere and box Physics
+        let x, y, z, w, h, d, t
+        let i = max
+        while (i--) {
+            if (type === 3) t = Math.floor(Math.random()*2)+1
+            else t = type
+            // Change params
+            coord = randomizeCoord()
+            x = coord.x
+            z = coord.z
+            y = coord.y
+            w = 10 + Math.random()*10;
+            h = 10 + Math.random()*10;
+            d = 10 + Math.random()*10;
+            config[4] = all
+            if (t === 1) {
+                config[3] = gp2
+                bodys[i] = worldGrav.add({type:'sphere', size:[w*0.5], pos:[x,y,z], move:true,  name:'sphere', config: config});
+                meshs[i] = new THREE.Mesh( buffgeoSphere, matSphere );
+                meshs[i].scale.set( w*0.5, w*0.5, w*0.5 );
+            } else if (t === 2){
+                config[3] = gp3;
+                bodys[i] = worldGrav.add({type:'box', size:[w,h,d], pos:[x,y,z], move:true, name:'box', config: config});
+                meshs[i] = new THREE.Mesh( buffgeoBox, matBox );
+                meshs[i].scale.set( w, h, d );
+            }
+            meshs[i].castShadow = true;
+            meshs[i].receiveShadow = true;
+            scene.add( meshs[i] );
+        }
+        config[3] = 1
+        config[4] = all
+    }
+
+    let oimoUpdate = () => {
+        if (worldGrav == null) return
+        worldGrav.step()
+
+        let i = bodys.length
+        let mesh, body
+        while (i --) {
+            body = bodys[i]
+            mesh = meshs[i]
+            if (!body.sleeping) {
+                mesh.position.copy(body.getPosition())
+                mesh.quaternion.copy(body.getQuaternion())
+
+                // reset position
+                if (mesh.position.y < (yMin -200) || mesh.position.y > (yMax + 1500)) {
+                    let coord = randomizeCoord()
+                    body.resetPosition(coord.x, coord.y, coord.z)
+                }
+            }
+        }
+    }
+
+    let gravity = (ng) => {
+        ng = document.getElementById('gravity').value
+        worldGrav.gravity = new OIMO.Vec3(0, ng, 0)
+    }
+
+
+    // Listener Resize
+    function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight
+        camera.updateProjectionMatrix()
+        renderer.setSize(window.innerWidth, window.innerHeight)
+        // controls.handleResize() //Active if first Person view is enabled
+    }
+
+    // Helpers Geometry
+    function generateHeight(width, height) {
+        let data = [], perlin = new ImprovedNoise(),
+            size = width * height, quality = 2, z = Math.random() * 100
+
+        for (let j = 0; j < 4; j++) {
+            if (j === 0) {
+                for (let i = 0; i < size; i++) {
+                    data[i] = 0
+                }
+            }
+            for (let i = 0; i < size; i++) {
+                let x = i % width, y = ( i / width ) | 0
+                data[i] += perlin.noise(x / quality, y / quality, z) * quality
+            }
+            quality *= 4
+        }
+        return data
+    }
+
+    let getY = (x, z) => {
+        return ( data[x + z * worldWidth] * 0.2 ) | 0
+    }
+
+    let getCoordMax = (x, y, z) => {
+        if (xMax === null && xMin === null &&
+            yMax === null && yMin === null &&
+            zMax === null && zMin === null) {
+            xMax = x * 100 - worldHalfWidth * 100
+            xMin = x * 100 - worldHalfWidth * 100
+            yMax = y * 100
+            yMin = y * 100
+            zMax = z * 100 - worldHalfDepth * 100
+            zMin = z * 100 - worldHalfDepth * 100
+        } else {
+            if ((x * 100 - worldHalfWidth * 100) < xMin) {
+                xMin = x * 100 - worldHalfWidth * 100
+            }
+            else if ((x * 100 - worldHalfWidth * 100) > xMax) {
+                xMax = x * 100 - worldHalfWidth * 100
+            }
+            if (y * 100 < yMin) {
+                yMin = y * 100
+            }
+            else if (y * 100 > yMax) {
+                yMax = y * 100
+            }
+            if ((z * 100 - worldHalfDepth * 100) < zMin) {
+                zMin = z
+            }
+            else if ((z * 100 - worldHalfDepth * 100) > zMax) {
+                zMax = z
+            }
+        }
+    }
+
+    let randomizeCoord = () => {
+        let coord = {}
+        coord.x = Math.floor(Math.random() * (xMax - xMin + 1) + xMin)
+        coord.y = Math.floor(Math.random() * (yMax + 400 - yMax + 1) + yMax)
+        let number = Math.floor(Math.random()*10 + 1) % 2
+        number ? coord.z = Math.floor(Math.random() * (zMax - zMin + 1) + zMax) : coord.z = Math.floor(Math.random() * (zMax - zMin + 1) + zMin)
+        return coord
+    }
+
+    // Texture
+    let basicTexture = (n) => {
+        let canvas = document.createElement('canvas')
+        canvas.width = canvas.height = 64
+        let ctx = canvas.getContext('2d'),
+            colors = []
+
+        if (n === 'sphere') { // sphere
+            colors[0] = "#58AA80"
+            colors[1] = "#58FFAA"
+        }
+        if (n === 'box') { // box
+            colors[0] = "#AA8058"
+            colors[1] = "#FFAA58"
+        }
+
+        ctx.fillStyle = colors[0]
+        ctx.fillRect(0, 0, 64, 64)
+        ctx.fillStyle = colors[1]
+        ctx.fillRect(0, 0, 32, 32)
+        ctx.fillRect(32, 32, 32, 32)
+        var tx = new THREE.Texture(canvas)
+        tx.needsUpdate = true
+        return tx
+    }
+
+    // LOOP
+    let animate = () => {
+        oimoUpdate()
+        requestAnimationFrame(animate)
+        render()
+    }
+
+    let render = () => {
+        controls.update(clock.getDelta())
+        renderer.render(scene, camera)
+    }
+
+
+    init()
+    animate()
+
+    function init() {
+
+        container = document.getElementById('container')
+
+        camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 20000)
+        //camera.position.y = getY(worldHalfWidth, worldHalfDepth) * 100 + 100
+        camera.position.set(3520, 2530, -170)
+
+
+        scene = new THREE.Scene()
+        scene.background = new THREE.Color(backgroundColor) // blue clair
+
+        ray = new THREE.Raycaster()
+
+        // Light
+        scene.add(new THREE.AmbientLight(0xcccccc))
+        let directionalLight = new THREE.DirectionalLight(0xffffff, 1) // 2 -> 1
+        directionalLight.position.set(1, 1, 0.5).normalize() // directionalLight.position.set( 300, 1000, 500 ); && directionalLight.target.position.set( 0, 0, 0 )
+        //Shadow
+        directionalLight.castShadow = true
+        directionalLight.shadow.camera = new THREE.OrthographicCamera(-300, 300, 300, -300, 500, 1600)
+        directionalLight.shadow.bias = 0.0001
+        directionalLight.shadow.mapSize.width = directionalLight.shadow.mapSize.height = 1024
+        scene.add(directionalLight)
+
+        renderer = new THREE.WebGLRenderer({antialias: antialias})
+        renderer.setPixelRatio(window.devicePixelRatio)
+        renderer.setSize(window.innerWidth, window.innerHeight)
+        renderer.shadowMap.enabled = true
+        renderer.shadowMapType = THREE.PCFShadowMap // THREE.BasicShadowMap
+
+        controls = new THREE.OrbitControls(camera, renderer.domElement)
+        controls.target.set(0, 20, 0)
+        controls.update()
+
+        //  INVERSE CONTROL AND UNCOMMENT THE LAST LINE ON THE RESIZE HANDLER (l. 184)
+
+        //  controls = new THREE.FirstPersonControls(camera)
+        //  controls.movementSpeed = 1500
+        //  controls.lookSpeed = 0.125
+        //  controls.lookVertical = true
+
+        // GEOMETRY
+        buffgeoSphere = new THREE.BufferGeometry()
+        buffgeoSphere.fromGeometry(new THREE.SphereGeometry(1, 20, 10))
+        buffgeoBox = new THREE.BufferGeometry()
+        buffgeoBox.fromGeometry(new THREE.BoxGeometry(1, 1, 1))
+        matSphere = new THREE[materialType]({map: basicTexture('sphere'), name: 'sph'})
+        matBox = new THREE[materialType]({map: basicTexture('box'), name: 'box'})
+
+
+
+        // BACKGROUND AND GRAVITY
+        // sides
+        var matrix = new THREE.Matrix4()
+
+        var pxGeometry = new THREE.PlaneBufferGeometry(100, 100)
+        pxGeometry.attributes.uv.array[1] = 0.5
+        pxGeometry.attributes.uv.array[3] = 0.5
+        pxGeometry.rotateY(Math.PI / 2)
+        pxGeometry.translate(50, 0, 0)
+
+        var nxGeometry = new THREE.PlaneBufferGeometry(100, 100)
+        nxGeometry.attributes.uv.array[1] = 0.5
+        nxGeometry.attributes.uv.array[3] = 0.5
+        nxGeometry.rotateY(-Math.PI / 2)
+        nxGeometry.translate(-50, 0, 0)
+
+        var pyGeometry = new THREE.PlaneBufferGeometry(100, 100)
+        pyGeometry.attributes.uv.array[5] = 0.5
+        pyGeometry.attributes.uv.array[7] = 0.5
+        pyGeometry.rotateX(-Math.PI / 2)
+        pyGeometry.translate(0, 50, 0)
+
+        var pzGeometry = new THREE.PlaneBufferGeometry(100, 100)
+        pzGeometry.attributes.uv.array[1] = 0.5
+        pzGeometry.attributes.uv.array[3] = 0.5
+        pzGeometry.translate(0, 0, 50)
+
+        var nzGeometry = new THREE.PlaneBufferGeometry(100, 100)
+        nzGeometry.attributes.uv.array[1] = 0.5
+        nzGeometry.attributes.uv.array[3] = 0.5
+        nzGeometry.rotateY(Math.PI)
+        nzGeometry.translate(0, 0, -50)
+
+        // BufferGeometry cannot be merged yet.
+        var tmpGeometry = new THREE.Geometry()
+        var pxTmpGeometry = new THREE.Geometry().fromBufferGeometry(pxGeometry)
+        var nxTmpGeometry = new THREE.Geometry().fromBufferGeometry(nxGeometry)
+        var pyTmpGeometry = new THREE.Geometry().fromBufferGeometry(pyGeometry)
+        var pzTmpGeometry = new THREE.Geometry().fromBufferGeometry(pzGeometry)
+        var nzTmpGeometry = new THREE.Geometry().fromBufferGeometry(nzGeometry)
+
+
+        //Init Gravity PlaneMesh (Red one)
+        let GravityPlaneMatrix = new THREE.Matrix4()
+        let GravityGeometry = new THREE.PlaneBufferGeometry(100, 100)
+        GravityGeometry.attributes.uv.array[5] = 0.5
+        GravityGeometry.attributes.uv.array[7] = 0.5
+        GravityGeometry.rotateX(-Math.PI / 2)
+        GravityGeometry.translate(0, 50, 0)
+        let GravityPlaneTmpGeo = new THREE.Geometry()
+        let GravityPlaneTmpYGeo = new THREE.Geometry().fromBufferGeometry(GravityGeometry)
+
+
+
+        for (var z = 0; z < worldDepth; z++) {
+            for (var x = 0; x < worldWidth; x++) {
+                let h = getY(x, z)
+
+                getCoordMax(x, h, z)
+                matrix.makeTranslation(
+                    x * 100 - worldHalfWidth * 100,
+                    h * 100,
+                    z * 100 - worldHalfDepth * 100
+                )
+
+                let px = getY(x + 1, z),
+                    nx = getY(x - 1, z),
+                    pz = getY(x, z + 1),
+                    nz = getY(x, z - 1)
+
+                tmpGeometry.merge(pyTmpGeometry, matrix)
+                if (( px !== h && px !== h + 1 ) || x === 0) {
+                    tmpGeometry.merge(pxTmpGeometry, matrix)
+                }
+
+                if (( nx !== h && nx !== h + 1 ) || x === worldWidth - 1) {
+                    tmpGeometry.merge(nxTmpGeometry, matrix)
+                }
+
+                if (( pz !== h && pz !== h + 1 ) || z === worldDepth - 1) {
+                    tmpGeometry.merge(pzTmpGeometry, matrix)
+                }
+
+                if (( nz !== h && nz !== h + 1 ) || z === 0) {
+                    tmpGeometry.merge(nzTmpGeometry, matrix)
+                }
+
+                // merge Matrix Gravity to the Gravity Plane (red one)
+                GravityPlaneMatrix.makeTranslation(
+                    x * 100 - worldHalfWidth * 100,
+                    (h + 0.4) * 100,
+                    z * 100 - worldHalfDepth * 100
+                )
+                GravityPlaneTmpGeo.merge(GravityPlaneTmpYGeo, GravityPlaneMatrix)
+
+
+                let gravBox = worldGrav.add({
+                    type: 'box',
+                    size: [100, 100],
+                    pos: [x * 100 - worldHalfWidth * 100, (h + 0.3) * 100, z * 100 - worldHalfDepth * 100],
+                    rot: [0,0,0],
+                    config: config,
+                    move: false,
+                    density: 1
+                })
+
+                console.log(pyTmpGeometry ,' -> geometry')
+                console.log(matrix, ' -> matrix')
+                console.log(gravBox)
+
+            }
+
+        }
+        var geometry = new THREE.BufferGeometry().fromGeometry(tmpGeometry)
+        geometry.computeBoundingSphere()
+        var texture = new THREE.TextureLoader().load('js/minecraft/atlas.png')
+        texture.magFilter = THREE.NearestFilter
+        texture.minFilter = THREE.LinearMipMapLinearFilter
+        var mesh = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({map: texture}))
+        mesh.castShadow = true
+        mesh.receiveShadow = true
+        scene.add(mesh)
+
+
+        // Gravity Mesh add to scene with geometry
+        let GravGeometry = new THREE.BufferGeometry().fromGeometry(GravityPlaneTmpGeo)
+        GravGeometry.computeBoundingSphere()
+        let GravMesh = new THREE.Mesh(GravGeometry, new THREE.MeshBasicMaterial({
+            color: 0xFF0000,
+            opacity: 0.48,
+            transparent: true
+        }))
+        scene.add(GravMesh)
+
+        oimoPopulate()
+
+        container.innerHTML = ""
+        container.appendChild(renderer.domElement)
+
+        window.addEventListener('resize', onWindowResize, false)
+    }
+
+</script>
+
+</body>
+</html>
