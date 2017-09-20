@@ -20,12 +20,12 @@ The directional move with the mouse can be changed. Currently it's orbital move 
 
 
 ### simplePhysical.html
-[Simple physical shapes falling down](https://i.imgur.com/croQzq9.png)
+![Simple physical shapes falling down](https://i.imgur.com/croQzq9.png)
 This file represent a mooving shape which is falling down in a fixed plane
 
 
 ### mooving.html
-[Mooving](https://i.imgur.com/BbTB4Wp.png)
+![Mooving](https://i.imgur.com/BbTB4Wp.png)
 It's an OIMO (gravity library used) example at the begining. I moidified it a bit to understand how it works.
 And that's what i want to reproduce in the minecraftSnow
 
